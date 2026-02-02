@@ -67,9 +67,10 @@ This rotation can be used to transform raw IMU measurements into the vehicle ref
 ## Status
 
 - [x] Core algorithm implemented
-- [x] Offline evaluation with recorded datasets
+- [x] Run-time offline evaluation with recorded datasets
+- [x] Compile-time offline evaluation with recorded datasets
 - [ ] Online convergence tuning
-- [ ] Well-structured code
+- [x] Well-structured code
 - [ ] Extended documentation
 
 ---
