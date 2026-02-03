@@ -70,13 +70,7 @@ namespace imu {
 
 			constexpr float Apply(float u) noexcept
 			{
-				if (!_initialized) [[unlikely]] {
-					_initialized = true;
-					_y = u;
-				}
-				else
-					_y = _alpha * u + (1.0f - _alpha) * _y;
-
+				_y = _alpha * u + (1.0f - _alpha) * _y;
 				return _y;
 			}
 
@@ -86,7 +80,6 @@ namespace imu {
 			}
 
 		private:
-			bool _initialized = false;
 			float _alpha;
 
 			float _y{};
@@ -131,19 +124,12 @@ namespace imu {
 
 			constexpr float Apply(float u) noexcept
 			{
-				if (!_initialized) [[unlikely]] {
-					_initialized = true;
-					_y = u;
-				}
-				else
-					_y = _beta * _y + _beta * (u - _u_prev);
-
+				_y = _beta * _y + _beta * (u - _u_prev);
 				_u_prev = u;
 				return _y;
 			}
 
 		private:
-			bool _initialized = false;
 			float _beta;
 
 			float _y{};
