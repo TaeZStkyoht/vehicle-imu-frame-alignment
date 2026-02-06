@@ -172,7 +172,7 @@ namespace imu {
 			float fcut_pre_lp = 1.4f;		// low-pass for acc/gyro preprocessing (Hz)
 			float fcut_angle_lp = 1.0f;		// LP for roll/pitch angle smoothing
 			float fcut_gyro_bias = 0.001f;	// LP for gyro bias estimation (very low)
-			float dg_th = 0.15f;			// tolerance for |a| ~ g to select gravity samples
+			float dg_th = 0.01f;			// tolerance for |a| ~ g to select gravity samples
 			float omega_mod_hp_fcut = 0.1f; // HPF for gyro norm to detect stillness (Hz)
 			float omega_threshold = 0.02f;	// threshold for stationary detection (rad/s)
 			// Yaw selection thresholds (paper tunings)
@@ -180,12 +180,15 @@ namespace imu {
 			float a_xy_th = 0.02f;	  // planar acceleration threshold for selecting straight accel [g]
 			float omega_xy_th = 0.2f; // threshold for roll/pitch dynamics limited
 			// Travel direction recognition thresholds
-			float gamma_lp_fcut = 0.5f;
+			float wz_rp_th = 0.01f; // threshold for selecting turning instants (rad/s)
+			float axy_rp_th = 0.2f; // threshold for selecting turning instants with enough planar acceleration (g)
+			float gamma_lp_fcut = 0.2f;
 			// Convergence HPF thresholds for angles (paper uses HPF then threshold)
 			float angle_hpf_fcut = 0.01f;
 
 			// RLS params
 			float rls_lambda = 0.995f; // forgetting factor
+			float rls_p0 = 1e4f;	   // initial covariance
 
 			float g = 1.0f; // gravitational magnitude in g units (1g)
 
@@ -205,7 +208,8 @@ namespace imu {
 				  _lp_angle_pitch(_parameters.fcut_angle_lp, input_period), _lp_gamma0(_parameters.gamma_lp_fcut, input_period),
 				  _lp_gamma180(_parameters.gamma_lp_fcut, input_period), _hp_omega_mod(_parameters.omega_mod_hp_fcut, input_period),
 				  _hp_angle_roll(_parameters.angle_hpf_fcut, input_period), _hp_angle_pitch(_parameters.angle_hpf_fcut, input_period),
-				  _hp_yaw(_parameters.angle_hpf_fcut, input_period), _rls_nominal(_parameters.rls_lambda, 1e6f), _rls_rotated(_parameters.rls_lambda, 1e6f)
+				  _hp_yaw(_parameters.angle_hpf_fcut, input_period), _rls_nominal(_parameters.rls_lambda, _parameters.rls_p0),
+				  _rls_rotated(_parameters.rls_lambda, _parameters.rls_p0)
 			{
 			}
 
@@ -423,7 +427,7 @@ namespace imu {
 			constexpr void EstimateDirection(float wz_rp, float axy_rp_norm, const data::Vec3& acc_RP) noexcept
 			{
 				// select turning instants: |wz_rp| > w_z_tdir and |a_xy_rp| > a_tdir (paper)
-				if (std::fabs(wz_rp) > 0.01f && axy_rp_norm > 0.01f) {
+				if (std::fabs(wz_rp) > _parameters.wz_rp_th && axy_rp_norm > _parameters.axy_rp_th) {
 					if (const auto [g0f, gpif] = CalculateGamma(wz_rp, acc_RP); !_latches.gamma) { // After lowpass, check if one exceeds threshold
 						if (g0f >= _parameters.gamma_conv_enter) {
 							_latches.gamma = true;
@@ -434,7 +438,7 @@ namespace imu {
 							_mountingAngles.yaw += M_PIf; // invert yaw
 						}
 					}
-					else if (g0f < _parameters.gamma_conv_exit || gpif < _parameters.gamma_conv_exit)
+					else if (g0f < _parameters.gamma_conv_exit && gpif < _parameters.gamma_conv_exit)
 						_latches.gamma = false;
 
 					if (_latches.gamma)
