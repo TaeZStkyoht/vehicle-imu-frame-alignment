@@ -13,6 +13,8 @@
  * Author:  Oğuzhan Türk
  * Contact: stkyoht@hotmail.com
  *
+ * Co-Author: Adrian Kersten
+ *
  * Notes:
  * - Inputs: accelerometer [g], gyroscope [rad/s]
  * - Designed for ground vehicles
