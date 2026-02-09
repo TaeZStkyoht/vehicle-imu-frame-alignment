@@ -31,9 +31,9 @@ namespace imu {
 			constexpr Vec3 operator-(const Vec3& v) const noexcept
 			{
 				return Vec3{
-					.x = x - v.x,
-					.y = y - v.y,
-					.z = z - v.z,
+					x - v.x,
+					y - v.y,
+					z - v.z,
 				};
 			}
 
@@ -96,18 +96,18 @@ namespace imu {
 			constexpr data::Vec3 Apply(const data::Vec3& input) noexcept
 			{
 				return data::Vec3{
-					.x = _lp_x.Apply(input.x),
-					.y = _lp_y.Apply(input.y),
-					.z = _lp_z.Apply(input.z),
+					_lp_x.Apply(input.x),
+					_lp_y.Apply(input.y),
+					_lp_z.Apply(input.z),
 				};
 			}
 
 			constexpr data::Vec3 Output() const noexcept
 			{
 				return data::Vec3{
-					.x = _lp_x.Output(),
-					.y = _lp_y.Output(),
-					.z = _lp_z.Output(),
+					_lp_x.Output(),
+					_lp_y.Output(),
+					_lp_z.Output(),
 				};
 			}
 
