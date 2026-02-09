@@ -20,8 +20,6 @@
  * - Designed for ground vehicles
  */
 
-#include <array>
-
 #include <cmath>
 
 namespace imu {
@@ -51,7 +49,7 @@ namespace imu {
 				};
 			}
 
-			std::array<std::array<float, 3>, 3> m;
+			float m[3][3];
 		};
 
 		struct ImuData final {
@@ -247,11 +245,11 @@ namespace imu {
 				const auto [sin_y, cos_y] = GetSinCos(_mounting_angles.yaw);
 
 				// Compose R = R_z(yaw) * R_y(pitch) * R_x(roll)
-				return data::Mat3{
-					std::array{cos_y * cos_p, cos_y * sin_p * sin_r - sin_y * cos_r, cos_y * sin_p * cos_r + sin_y * sin_r},
-					std::array{sin_y * cos_p, sin_y * sin_p * sin_r + cos_y * cos_r, sin_y * sin_p * cos_r - cos_y * sin_r},
-					std::array{-sin_p, cos_p * sin_r, cos_p * cos_r},
-				};
+				return data::Mat3{{
+					{cos_y * cos_p, cos_y * sin_p * sin_r - sin_y * cos_r, cos_y * sin_p * cos_r + sin_y * sin_r},
+					{sin_y * cos_p, sin_y * sin_p * sin_r + cos_y * cos_r, sin_y * sin_p * cos_r - cos_y * sin_r},
+					{-sin_p, cos_p * sin_r, cos_p * cos_r},
+				}};
 			}
 
 			constexpr bool IsRollPitchConverged() const noexcept

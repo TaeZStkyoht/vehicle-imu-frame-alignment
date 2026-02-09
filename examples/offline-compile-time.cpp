@@ -1,5 +1,7 @@
 #include "../include/vehicle-imu-frame-alignment/MountingOrientationEstimator.hpp"
 
+#include <initializer_list>
+
 using namespace std;
 
 using namespace imu;
