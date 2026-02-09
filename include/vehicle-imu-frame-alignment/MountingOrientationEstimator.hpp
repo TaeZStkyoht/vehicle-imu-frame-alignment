@@ -20,7 +20,6 @@
  * - Designed for ground vehicles
  */
 
-#include <algorithm>
 #include <array>
 
 #include <cmath>
