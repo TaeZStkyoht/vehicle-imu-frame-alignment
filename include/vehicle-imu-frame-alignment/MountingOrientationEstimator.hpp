@@ -168,8 +168,8 @@ namespace imu {
 
 	namespace allignment {
 		struct Parameters final {
-			float g = 1.0f;					   // gravitational magnitude in g units (1g)
-			float deg_to_rad = M_PIf / 180.0f; // conversion factor for degrees to radians
+			static constexpr float deg_to_rad = M_PIf / 180.0f; // conversion factor for degrees to radians
+			static constexpr float g = 1.0f;					// gravitational magnitude in g units (1g)
 
 			// Data pre-processing
 			float fcut_pre_lp = 1.4f;		// low-pass for acc/gyro preprocessing (Hz)
@@ -219,7 +219,7 @@ namespace imu {
 			{
 				const auto [acc_filtered, gyro_filtered] = PreProcessData(imu_data.acc, imu_data.gyro);
 
-				if (!_convergenceFlags.roll_pitch) {
+				if (!_convergence_flags.roll_pitch) {
 					EstimateRollPitch(acc_filtered);
 					return;
 				}
@@ -229,21 +229,21 @@ namespace imu {
 				const float omega_z_rp = gyro_rp.z;
 				const float a_xy_rp_norm = Normalize(acc_rp.x, acc_rp.y);
 
-				if (!_convergenceFlags.yaw) {
+				if (!_convergence_flags.yaw) {
 					EstimateYaw(omega_z_rp, a_xy_rp_norm, acc_rp, gyro_rp);
 					return;
 				}
 
-				if (!_convergenceFlags.direction)
+				if (!_convergence_flags.direction)
 					EstimateDirection(omega_z_rp, a_xy_rp_norm, acc_rp);
 			}
 
 			// Return rotation matrix from mounting angles (roll,pitch,yaw) following Z-Y-X (yaw-pitch-roll) order
 			constexpr data::Mat3 GetRotationMatrixOfImuToVehicle() const noexcept
 			{
-				const auto [sin_r, cos_r] = GetSinCos(_mountingAngles.roll);
-				const auto [sin_p, cos_p] = GetSinCos(_mountingAngles.pitch);
-				const auto [sin_y, cos_y] = GetSinCos(_mountingAngles.yaw);
+				const auto [sin_r, cos_r] = GetSinCos(_mounting_angles.roll);
+				const auto [sin_p, cos_p] = GetSinCos(_mounting_angles.pitch);
+				const auto [sin_y, cos_y] = GetSinCos(_mounting_angles.yaw);
 
 				// Compose R = R_z(yaw) * R_y(pitch) * R_x(roll)
 				return data::Mat3{
@@ -255,37 +255,37 @@ namespace imu {
 
 			constexpr bool IsRollPitchConverged() const noexcept
 			{
-				return _convergenceFlags.roll_pitch;
+				return _convergence_flags.roll_pitch;
 			}
 
 			constexpr bool IsYawConverged() const noexcept
 			{
-				return _convergenceFlags.yaw;
+				return _convergence_flags.yaw;
 			}
 
 			constexpr bool IsDirectionConverged() const noexcept
 			{
-				return _convergenceFlags.direction;
+				return _convergence_flags.direction;
 			}
 
 			constexpr bool IsCalibrated() const noexcept
 			{
-				return _convergenceFlags.roll_pitch && _convergenceFlags.yaw && _convergenceFlags.direction;
+				return _convergence_flags.roll_pitch && _convergence_flags.yaw && _convergence_flags.direction;
 			}
 
 			constexpr float Roll() const noexcept
 			{
-				return _mountingAngles.roll;
+				return _mounting_angles.roll;
 			}
 
 			constexpr float Pitch() const noexcept
 			{
-				return _mountingAngles.pitch;
+				return _mounting_angles.pitch;
 			}
 
 			constexpr float Yaw() const noexcept
 			{
-				return _mountingAngles.yaw;
+				return _mounting_angles.yaw;
 			}
 
 			static constexpr float FrequencyToPeriod(float frequency) noexcept
@@ -358,9 +358,9 @@ namespace imu {
 									   _parameters.angle_conv_exit);
 
 					if (_latches.roll && _latches.pitch) {
-						_mountingAngles.roll = filtered_roll_estimate;
-						_mountingAngles.pitch = filtered_pitch_estimate;
-						_convergenceFlags.roll_pitch = true;
+						_mounting_angles.roll = filtered_roll_estimate;
+						_mounting_angles.pitch = filtered_pitch_estimate;
+						_convergence_flags.roll_pitch = true;
 					}
 				}
 			}
@@ -370,8 +370,8 @@ namespace imu {
 				// rotate acc and gyro to roll/pitch rotated frame (remove roll+pitch)
 				// Build rotation: R_rp = R_x(roll) * R_y(pitch) (note order to rotate IMU frame to RP frame)
 				// We'll approximate by applying inverse rotations: first rotate by -roll about X, then by -pitch about Y.
-				return {RotateRemoveRollPitch(acc_filtered, _mountingAngles.roll, _mountingAngles.pitch),
-						RotateRemoveRollPitch(gyro_filtered, _mountingAngles.roll, _mountingAngles.pitch)};
+				return {RotateRemoveRollPitch(acc_filtered, _mounting_angles.roll, _mounting_angles.pitch),
+						RotateRemoveRollPitch(gyro_filtered, _mounting_angles.roll, _mounting_angles.pitch)};
 			}
 
 			constexpr float CalculateYaw(const data::Vec3& acc_rp) noexcept
@@ -403,13 +403,13 @@ namespace imu {
 				// Below conditions: not turning && accelerating && limited roll/pitch dynamics (omega_xy_rp_norm <= omega_xy_th) (Eq.13)
 				if (std::fabs(omega_z_rp) < _parameters.omega_z_th && a_xy_rp_norm > _parameters.a_xy_th &&
 					Normalize(gyro_rp.x, gyro_rp.y) <= _parameters.omega_xy_th) {
-					const float expectedYaw = CalculateYaw(acc_rp);
+					const float expected_yaw = CalculateYaw(acc_rp);
 
 					// convergence detection for yaw: HPF angles small => converged
-					AssignLatchedValue(_latches.yaw, _hp_yaw.Apply(expectedYaw), _parameters.angle_conv_enter, _parameters.angle_conv_exit);
+					AssignLatchedValue(_latches.yaw, _hp_yaw.Apply(expected_yaw), _parameters.angle_conv_enter, _parameters.angle_conv_exit);
 					if (_latches.yaw) {
-						_mountingAngles.yaw = expectedYaw;
-						_convergenceFlags.yaw = true;
+						_mounting_angles.yaw = expected_yaw;
+						_convergence_flags.yaw = true;
 					}
 				}
 			}
@@ -418,8 +418,8 @@ namespace imu {
 			{
 				// Two candidate yaws: yaw and yaw + pi
 				// rotate the RP planar acceleration into candidate vehicle frames:
-				float a_y_0 = Rotate2D(acc_rp.x, acc_rp.y, -_mountingAngles.yaw);			 // transform by -psi0
-				float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, -(_mountingAngles.yaw + M_PIf)); // transform by -(psi+pi)
+				float a_y_0 = Rotate2D(acc_rp.x, acc_rp.y, -_mounting_angles.yaw);			  // transform by -psi0
+				float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, -(_mounting_angles.yaw + M_PIf)); // transform by -(psi+pi)
 
 				// Gamma0 = 1 if sign(a_y) == sign(omega_z)
 				int gamma_0 = std::copysign(1.0f, a_y_0) == std::copysign(1.0f, omega_z_rp) ? 1 : 0;
@@ -439,14 +439,14 @@ namespace imu {
 						}
 						else if (gamma_pi_f >= _parameters.gamma_conv_enter) {
 							_latches.gamma = true;
-							_mountingAngles.yaw += M_PIf; // invert yaw
+							_mounting_angles.yaw += M_PIf; // invert yaw
 						}
 					}
 					else if (gamma_0_f < _parameters.gamma_conv_exit && gamma_pi_f < _parameters.gamma_conv_exit)
 						_latches.gamma = false;
 
 					if (_latches.gamma)
-						_convergenceFlags.direction = true;
+						_convergence_flags.direction = true;
 				}
 			}
 
@@ -466,9 +466,9 @@ namespace imu {
 				return {std::sin(angle), std::cos(angle)};
 			}
 
-			static constexpr void AssignLatchedValue(bool& latch, float errorValue, float enter_threshold, float exit_threshold) noexcept
+			static constexpr void AssignLatchedValue(bool& latch, float error_value, float enter_threshold, float exit_threshold) noexcept
 			{
-				if (const float abs_error_value = std::fabs(errorValue); !latch) {
+				if (const float abs_error_value = std::fabs(error_value); !latch) {
 					if (abs_error_value <= enter_threshold)
 						latch = true;
 				}
@@ -515,12 +515,12 @@ namespace imu {
 			filter::ScalarRLS _rls_rotated;
 
 			// outputs
-			MountingAngles _mountingAngles;
+			MountingAngles _mounting_angles;
 
 			// latched flags
 			Latches _latches;
 
-			ConvergenceFlags _convergenceFlags;
+			ConvergenceFlags _convergence_flags;
 		};
 	}
 }
