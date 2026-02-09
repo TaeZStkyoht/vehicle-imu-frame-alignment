@@ -16,7 +16,7 @@ public:
 	static optional<CsvReader> Create(const char* path)
 	{
 		if (CsvReader csvReader(path); csvReader._inputFile.is_open()) {
-			csvReader.ReadLine();
+			csvReader._inputFile.ignore(numeric_limits<streamsize>::max(), '\n'); // Skip first line of csv
 			return csvReader;
 		}
 
@@ -26,29 +26,23 @@ public:
 
 	optional<ImuData> Read()
 	{
-		if (const auto line = ReadLine(); line) {
-			ImuData imuData;
-			stringstream ss(*line);
+		optional<ImuData> imuData;
+
+		if (string line; getline(_inputFile, line)) {
+			stringstream ss(line);
 			long long timestamp;
 			char comma;
-			ss >> timestamp >> comma >> imuData.acc.x >> comma >> imuData.acc.y >> comma >> imuData.acc.z >> comma >> imuData.gyro.x >> comma >>
-				imuData.gyro.y >> comma >> imuData.gyro.z;
-			return imuData;
+			imuData.emplace();
+			ss >> timestamp >> comma >> imuData->acc.x >> comma >> imuData->acc.y >> comma >> imuData->acc.z >> comma >> imuData->gyro.x >> comma >>
+				imuData->gyro.y >> comma >> imuData->gyro.z;
 		}
 
-		return {};
+		return imuData;
 	}
 
 private:
 	explicit CsvReader(const char* path) : _inputFile(path)
 	{
-	}
-
-	optional<string> ReadLine()
-	{
-		if (string line; getline(_inputFile, line))
-			return line;
-		return {};
 	}
 
 	ifstream _inputFile;
@@ -77,7 +71,7 @@ int main(int argc, const char* argv[])
 
 	size_t iteration = 1;
 
-	MountingOrientationEstimator mountingOrientationEstimator(MountingOrientationEstimator::FrequencyToPeriod(10.f));
+	static constinit MountingOrientationEstimator mountingOrientationEstimator(MountingOrientationEstimator::FrequencyToPeriod(10.f));
 	for (;; ++iteration) {
 		const auto imuData = csvReader->Read();
 		if (!imuData)
