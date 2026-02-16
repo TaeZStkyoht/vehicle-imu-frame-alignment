@@ -184,17 +184,17 @@ namespace imu {
 			float angle_conv_exit = 0.2f * deg_to_rad;	  // 0.2° exit (hysteresis)
 
 			// Yaw selection thresholds
-			float omega_z_th = 0.1f;  // small yaw rate threshold for "not turning" (rad/s)
-			float a_xy_th = 0.02f;	  // planar acceleration threshold for selecting straight accel (g)
-			float omega_xy_th = 0.2f; // threshold for roll/pitch dynamics limited
+			float omega_z_th = 0.05f; // small yaw rate threshold for "not turning" (rad/s)
+			float a_xy_th = 0.15f;	  // planar acceleration threshold for selecting straight accel (g)
+			float omega_xy_th = 0.1f; // threshold for roll/pitch dynamics limited
 
 			// RLS params
 			float rls_lambda = 0.995f; // forgetting factor
 			float rls_p0 = 1e4f;	   // initial covariance
 
 			// Travel direction recognition thresholds
-			float omega_z_dir_th = 0.01f; // threshold for selecting turning instants (rad/s)
-			float a_xy_dir_th = 0.2f;	  // threshold for selecting turning instants with enough planar acceleration (g)
+			float omega_z_dir_th = 0.05f; // threshold for selecting turning instants (rad/s)
+			float a_xy_dir_th = 0.1f;	  // threshold for selecting turning instants with enough planar acceleration (g)
 			float gamma_lp_fcut = 0.2f;
 			float gamma_conv_enter = 0.57f;
 			float gamma_conv_exit = 0.43f;
