@@ -20,6 +20,8 @@
  * - Designed for ground vehicles
  */
 
+#include <iostream>
+
 #include <cmath>
 
 namespace imu {
@@ -184,17 +186,17 @@ namespace imu {
 			float angle_conv_exit = 0.2f * deg_to_rad;	  // 0.2° exit (hysteresis)
 
 			// Yaw selection thresholds
-			float omega_z_th = 0.1f;  // small yaw rate threshold for "not turning" (rad/s)
-			float a_xy_th = 0.02f;	  // planar acceleration threshold for selecting straight accel (g)
-			float omega_xy_th = 0.2f; // threshold for roll/pitch dynamics limited
+			float omega_z_th = 0.05f; // small yaw rate threshold for "not turning" (rad/s)
+			float a_xy_th = 0.15f;	  // planar acceleration threshold for selecting straight accel (g)
+			float omega_xy_th = 0.1f; // threshold for roll/pitch dynamics limited
 
 			// RLS params
 			float rls_lambda = 0.995f; // forgetting factor
 			float rls_p0 = 1e4f;	   // initial covariance
 
 			// Travel direction recognition thresholds
-			float omega_z_dir_th = 0.01f; // threshold for selecting turning instants (rad/s)
-			float a_xy_dir_th = 0.2f;	  // threshold for selecting turning instants with enough planar acceleration (g)
+			float omega_z_dir_th = 0.05f; // threshold for selecting turning instants (rad/s)
+			float a_xy_dir_th = 0.1f;	  // threshold for selecting turning instants with enough planar acceleration (g)
 			float gamma_lp_fcut = 0.2f;
 			float gamma_conv_enter = 0.57f;
 			float gamma_conv_exit = 0.43f;
@@ -203,6 +205,14 @@ namespace imu {
 		// ---------- Calibration class implementing the pipeline ----------
 		class MountingOrientationEstimator final {
 		public:
+			size_t rollPitchEntrance = 0;
+			size_t yawEntrance = 0;
+			size_t dirEntrance = 0;
+
+			size_t rollPitchTotalPoint = 0;
+			size_t yawTotalPoint = 0;
+			size_t dirTotalPoint = 0;
+
 			constexpr explicit MountingOrientationEstimator(float input_period, const Parameters& parameters = {}) noexcept
 				: _parameters(parameters), _lp_acc(_parameters.fcut_pre_lp, input_period), _lp_gyro(_parameters.fcut_pre_lp, input_period),
 				  _lp_gyro_bias(_parameters.fcut_gyro_bias, input_period), _lp_angle_roll(_parameters.fcut_angle_lp, input_period),
@@ -338,9 +348,12 @@ namespace imu {
 
 			constexpr void EstimateRollPitch(const data::Vec3& acc_filtered) noexcept
 			{
+				++rollPitchTotalPoint;
+
 				// Select gravitational-like samples: ||a|| close to g
 				if (const float a_norm = Normalize(acc_filtered.x, acc_filtered.y, acc_filtered.z);
 					a_norm >= (_parameters.g - _parameters.delta_g_th) && a_norm <= (_parameters.g + _parameters.delta_g_th)) {
+					++rollPitchEntrance;
 					// compute roll/pitch as in paper (Eq. 11)
 					const float roll_estimate = std::atan2(acc_filtered.y, acc_filtered.z);
 					const auto [sin_roll, cos_roll] = GetSinCos(roll_estimate);
@@ -399,9 +412,12 @@ namespace imu {
 
 			constexpr void EstimateYaw(float omega_z_rp, float a_xy_rp_norm, const data::Vec3& acc_rp, const data::Vec3& gyro_rp) noexcept
 			{
+				++yawTotalPoint;
+
 				// Below conditions: not turning && accelerating && limited roll/pitch dynamics (omega_xy_rp_norm <= omega_xy_th) (Eq.13)
 				if (std::fabs(omega_z_rp) < _parameters.omega_z_th && a_xy_rp_norm > _parameters.a_xy_th &&
 					Normalize(gyro_rp.x, gyro_rp.y) <= _parameters.omega_xy_th) {
+					++yawEntrance;
 					const float expected_yaw = CalculateYaw(acc_rp);
 
 					// convergence detection for yaw: HPF angles small => converged
@@ -421,17 +437,21 @@ namespace imu {
 				float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, -(_mounting_angles.yaw + M_PIf)); // transform by -(psi+pi)
 
 				// Gamma0 = 1 if sign(a_y) == sign(omega_z)
-				int gamma_0 = std::copysign(1.0f, a_y_0) == std::copysign(1.0f, omega_z_rp) ? 1 : 0;
-				int gamma_pi = std::copysign(1.0f, a_y_pi) == std::copysign(1.0f, omega_z_rp) ? 1 : 0;
+				int gamma_0 = (std::copysign(1.0f, a_y_0) == std::copysign(1.0f, omega_z_rp)) ? 1 : 0;
+				int gamma_pi = (std::copysign(1.0f, a_y_pi) == std::copysign(1.0f, omega_z_rp)) ? 1 : 0;
 
 				return {_lp_gamma_0.Apply(float(gamma_0)), _lp_gamma_pi.Apply(float(gamma_pi))};
 			}
 
 			constexpr void EstimateDirection(float omega_z_rp, float axy_rp_norm, const data::Vec3& acc_rp) noexcept
 			{
+				++dirTotalPoint;
+
 				// select turning instants with significant planar acceleration
 				if (std::fabs(omega_z_rp) > _parameters.omega_z_dir_th && axy_rp_norm > _parameters.a_xy_dir_th) {
-					if (const auto [gamma_0_f, gamma_pi_f] = CalculateGamma(omega_z_rp, acc_rp); !_latches.gamma) {
+					++dirEntrance;
+					const auto [gamma_0_f, gamma_pi_f] = CalculateGamma(omega_z_rp, acc_rp);
+					if (!_latches.gamma) {
 						if (gamma_0_f >= _parameters.gamma_conv_enter) {
 							_latches.gamma = true;
 							// candidate 0 (psi0) is correct -> nothing
@@ -443,6 +463,8 @@ namespace imu {
 					}
 					else if (gamma_0_f < _parameters.gamma_conv_exit && gamma_pi_f < _parameters.gamma_conv_exit)
 						_latches.gamma = false;
+
+					std::cout << "gamma_0_f: " << gamma_0_f << ", gamma_pi_f: " << gamma_pi_f << std::endl;
 
 					if (_latches.gamma)
 						_convergence_flags.direction = true;
