@@ -203,6 +203,15 @@ namespace imu {
 		// ---------- Calibration class implementing the pipeline ----------
 		class MountingOrientationEstimator final {
 		public:
+#ifdef DEBUG_VIFA
+			size_t rollPitchEntrance = 0;
+			size_t yawEntrance = 0;
+			size_t dirEntrance = 0;
+
+			size_t rollPitchTotalPoint = 0;
+			size_t yawTotalPoint = 0;
+			size_t dirTotalPoint = 0;
+#endif
 			constexpr explicit MountingOrientationEstimator(float input_period, const Parameters& parameters = {}) noexcept
 				: _parameters(parameters), _lp_acc(_parameters.fcut_pre_lp, input_period), _lp_gyro(_parameters.fcut_pre_lp, input_period),
 				  _lp_gyro_bias(_parameters.fcut_gyro_bias, input_period), _lp_angle_roll(_parameters.fcut_angle_lp, input_period),
@@ -338,9 +347,15 @@ namespace imu {
 
 			constexpr void EstimateRollPitch(const data::Vec3& acc_filtered) noexcept
 			{
+#ifdef DEBUG_VIFA
+				++rollPitchTotalPoint;
+#endif
 				// Select gravitational-like samples: ||a|| close to g
 				if (const float a_norm = Normalize(acc_filtered.x, acc_filtered.y, acc_filtered.z);
 					a_norm >= (_parameters.g - _parameters.delta_g_th) && a_norm <= (_parameters.g + _parameters.delta_g_th)) {
+#ifdef DEBUG_VIFA
+					++rollPitchEntrance;
+#endif
 					// compute roll/pitch as in paper (Eq. 11)
 					const float roll_estimate = std::atan2(acc_filtered.y, acc_filtered.z);
 					const auto [sin_roll, cos_roll] = GetSinCos(roll_estimate);
@@ -399,9 +414,15 @@ namespace imu {
 
 			constexpr void EstimateYaw(float omega_z_rp, float a_xy_rp_norm, const data::Vec3& acc_rp, const data::Vec3& gyro_rp) noexcept
 			{
+#ifdef DEBUG_VIFA
+				++yawTotalPoint;
+#endif
 				// Below conditions: not turning && accelerating && limited roll/pitch dynamics (omega_xy_rp_norm <= omega_xy_th) (Eq.13)
 				if (std::fabs(omega_z_rp) < _parameters.omega_z_th && a_xy_rp_norm > _parameters.a_xy_th &&
 					Normalize(gyro_rp.x, gyro_rp.y) <= _parameters.omega_xy_th) {
+#ifdef DEBUG_VIFA
+					++yawEntrance;
+#endif
 					const float expected_yaw = CalculateYaw(acc_rp);
 
 					// convergence detection for yaw: HPF angles small => converged
@@ -429,8 +450,14 @@ namespace imu {
 
 			constexpr void EstimateDirection(float omega_z_rp, float axy_rp_norm, const data::Vec3& acc_rp) noexcept
 			{
+#ifdef DEBUG_VIFA
+				++dirTotalPoint;
+#endif
 				// select turning instants with significant planar acceleration
 				if (std::fabs(omega_z_rp) > _parameters.omega_z_dir_th && axy_rp_norm > _parameters.a_xy_dir_th) {
+#ifdef DEBUG_VIFA
+					++dirEntrance;
+#endif
 					if (const auto [gamma_0_f, gamma_pi_f] = CalculateGamma(omega_z_rp, acc_rp); !_latches.gamma) {
 						if (gamma_0_f >= _parameters.gamma_conv_enter) {
 							_latches.gamma = true;
