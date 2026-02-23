@@ -21,4 +21,5 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wconversion \
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 
 add_executable(vehicle-imu-frame-alignment-offline-run-time offline-run-time.cpp)
+add_executable(vehicle-imu-frame-alignment-offline-run-time-continuously offline-run-time-continuously.cpp)
 add_executable(vehicle-imu-frame-alignment-offline-compile-time offline-compile-time.cpp)
