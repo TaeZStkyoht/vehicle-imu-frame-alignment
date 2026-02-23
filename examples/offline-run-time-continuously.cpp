@@ -1,3 +1,5 @@
+#define DEBUG_VIFA
+
 #include "../include/vehicle-imu-frame-alignment/MountingOrientationEstimator.hpp"
 
 #include <fstream>
@@ -39,19 +41,19 @@ public:
 			ss >> timestamp >> comma >> imuData->acc.x >> comma >> imuData->acc.y >> comma >> imuData->acc.z >> comma >> imuData->gyro.x >> comma >>
 				imuData->gyro.y >> comma >> imuData->gyro.z;
 
-			// imuData->acc.z *= -1;
-			// imuData->gyro.z *= -1;
+			// // imuData->acc.z *= -1;
+			// // imuData->gyro.z *= -1;
 
-			imuData->acc.y *= -1;
-			imuData->gyro.y *= -1;
+			// imuData->acc.y *= -1;
+			// imuData->gyro.y *= -1;
 
-			float tempAcc = imuData->acc.x;
-			imuData->acc.x = -imuData->acc.z;
-			imuData->acc.z = -tempAcc;
+			// float tempAcc = imuData->acc.x;
+			// imuData->acc.x = -imuData->acc.z;
+			// imuData->acc.z = -tempAcc;
 
-			float tempGyro = imuData->gyro.x;
-			imuData->gyro.x = -imuData->gyro.z;
-			imuData->gyro.z = -tempGyro;
+			// float tempGyro = imuData->gyro.x;
+			// imuData->gyro.x = -imuData->gyro.z;
+			// imuData->gyro.z = -tempGyro;
 		}
 
 		return imuData;
@@ -82,25 +84,25 @@ static optional<Mat3> TryCalibrate(CsvReader& csvReader)
 				 << rotationMatrix.m[1][0] << ' ' << rotationMatrix.m[1][1] << ' ' << rotationMatrix.m[1][2] << "\n"
 				 << rotationMatrix.m[2][0] << ' ' << rotationMatrix.m[2][1] << ' ' << rotationMatrix.m[2][2] << "\n";
 
-			// cout << "rollPitchEntrance: " << mountingOrientationEstimator.rollPitchEntrance << '\n'
-			// 	 << "yawEntrance: " << mountingOrientationEstimator.yawEntrance << '\n'
-			// 	 << "dirEntrance: " << mountingOrientationEstimator.dirEntrance << '\n';
+			cout << "rollPitchEntrance: " << mountingOrientationEstimator.rollPitchEntrance << '\n'
+				 << "yawEntrance: " << mountingOrientationEstimator.yawEntrance << '\n'
+				 << "dirEntrance: " << mountingOrientationEstimator.dirEntrance << '\n';
 
-			// cout << "rollPitchTotalPoint: " << mountingOrientationEstimator.rollPitchTotalPoint << '\n'
-			// 	 << "yawTotalPoint: " << mountingOrientationEstimator.yawTotalPoint << '\n'
-			// 	 << "dirTotalPoint: " << mountingOrientationEstimator.dirTotalPoint << '\n';
+			cout << "rollPitchTotalPoint: " << mountingOrientationEstimator.rollPitchTotalPoint << '\n'
+				 << "yawTotalPoint: " << mountingOrientationEstimator.yawTotalPoint << '\n'
+				 << "dirTotalPoint: " << mountingOrientationEstimator.dirTotalPoint << '\n';
 
 			return rotationMatrix;
 		}
 	}
 
-	// cout << "rollPitchEntrance: " << mountingOrientationEstimator.rollPitchEntrance << '\n'
-	// 	 << "yawEntrance: " << mountingOrientationEstimator.yawEntrance << '\n'
-	// 	 << "dirEntrance: " << mountingOrientationEstimator.dirEntrance << '\n';
+	cout << "rollPitchEntrance: " << mountingOrientationEstimator.rollPitchEntrance << '\n'
+		 << "yawEntrance: " << mountingOrientationEstimator.yawEntrance << '\n'
+		 << "dirEntrance: " << mountingOrientationEstimator.dirEntrance << '\n';
 
-	// cout << "rollPitchTotalPoint: " << mountingOrientationEstimator.rollPitchTotalPoint << '\n'
-	// 	 << "yawTotalPoint: " << mountingOrientationEstimator.yawTotalPoint << '\n'
-	// 	 << "dirTotalPoint: " << mountingOrientationEstimator.dirTotalPoint << '\n';
+	cout << "rollPitchTotalPoint: " << mountingOrientationEstimator.rollPitchTotalPoint << '\n'
+		 << "yawTotalPoint: " << mountingOrientationEstimator.yawTotalPoint << '\n'
+		 << "dirTotalPoint: " << mountingOrientationEstimator.dirTotalPoint << '\n';
 
 	return {};
 }
