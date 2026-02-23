@@ -4,10 +4,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(NOT CMAKE_BUILD_TYPE)
-	set(CMAKE_BUILD_TYPE "Debug")
-endif()
-
 message(STATUS "Build Type: " ${CMAKE_BUILD_TYPE})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wconversion \
@@ -20,6 +16,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wconversion \
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 
-add_executable(vehicle-imu-frame-alignment-offline-run-time offline-run-time.cpp)
-add_executable(vehicle-imu-frame-alignment-offline-run-time-continuously offline-run-time-continuously.cpp)
-add_executable(vehicle-imu-frame-alignment-offline-compile-time offline-compile-time.cpp)
+if (BUILD_RUN_TIME_EXAMPLES)
+	add_subdirectory(run-time)
+endif()
+
+if(BUILD_COMPILE_TIME_EXAMPLES)
+	add_subdirectory(compile-time)
+endif()
