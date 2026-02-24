@@ -67,17 +67,33 @@ private:
 	ifstream _inputFile;
 };
 
+static void printStatus(const MountingOrientationEstimator& mountingOrientationEstimator)
+{
+	std::cout << "RP conv: " << mountingOrientationEstimator.IsRollPitchConverged() << " Yaw conv: " << mountingOrientationEstimator.IsYawConverged()
+			  << " Dir conv: " << mountingOrientationEstimator.IsDirectionConverged() << " Calibrated: " << mountingOrientationEstimator.IsCalibrated()
+			  << "\n";
+	std::cout << "roll (deg): " << mountingOrientationEstimator.Roll() * 180.0f / M_PIf
+			  << " pitch (deg): " << mountingOrientationEstimator.Pitch() * 180.0f / M_PIf
+			  << " yaw (deg): " << mountingOrientationEstimator.Yaw() * 180.0f / M_PIf << "\n";
+}
+
 static optional<Mat3> TryCalibrate(CsvReader& csvReader)
 {
 	MountingOrientationEstimator mountingOrientationEstimator(MountingOrientationEstimator::FrequencyToPeriod(10.f));
 
-	for (;;) {
+	size_t iteration = 1;
+
+	for (;; ++iteration) {
 		const auto imuData = csvReader.Read();
 		if (!imuData)
 			break;
 
 		mountingOrientationEstimator.FeedSample(*imuData);
 		if (mountingOrientationEstimator.IsCalibrated()) {
+			cout << "Mounting angle calculated after " << iteration << " iteration\n";
+
+			printStatus(mountingOrientationEstimator);
+
 			auto rotationMatrix = mountingOrientationEstimator.GetRotationMatrixOfImuToVehicle();
 			cout << "GetRotationMatrixOfImuToVehicle:\n"
 				 << rotationMatrix.m[0][0] << ' ' << rotationMatrix.m[0][1] << ' ' << rotationMatrix.m[0][2] << "\n"
@@ -95,6 +111,8 @@ static optional<Mat3> TryCalibrate(CsvReader& csvReader)
 			return rotationMatrix;
 		}
 	}
+
+	printStatus(mountingOrientationEstimator);
 
 	cout << "rollPitchEntrance: " << mountingOrientationEstimator.rollPitchEntrance << '\n'
 		 << "yawEntrance: " << mountingOrientationEstimator.yawEntrance << '\n'

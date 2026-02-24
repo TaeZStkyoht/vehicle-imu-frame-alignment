@@ -352,7 +352,7 @@ namespace imu {
 #endif
 				// Select gravitational-like samples: ||a|| close to g
 				if (const float a_norm = Normalize(acc_filtered.x, acc_filtered.y, acc_filtered.z);
-					a_norm >= (_parameters.g - _parameters.delta_g_th) && a_norm <= (_parameters.g + _parameters.delta_g_th)) {
+					a_norm >= (Parameters::g - _parameters.delta_g_th) && a_norm <= (Parameters::g + _parameters.delta_g_th)) {
 #ifdef DEBUG_VIFA
 					++rollPitchEntrance;
 #endif
