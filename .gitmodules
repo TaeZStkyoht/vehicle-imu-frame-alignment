@@ -1,0 +1,3 @@
+[submodule "external/raw-vehicle-imu-data"]
+	path = external/raw-vehicle-imu-data
+	url = https://github.com/TaeZStkyoht/raw-vehicle-imu-data.git

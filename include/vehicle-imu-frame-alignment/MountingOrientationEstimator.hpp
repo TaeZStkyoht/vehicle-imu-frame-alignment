@@ -8,7 +8,7 @@
  * Based on:
  * Senofieni, R., Corno, M., Strada, S. C., Savaresi, S. M., & Fredella, S. (2023)
  * "GNSS-free Online Calibration of Inertial Measurement Units in Road Vehicles"
- * IEEE Sensors Journal
+ * IFAC-PapersOnLine
  *
  * Author:  Oğuzhan Türk
  * Contact: stkyoht@hotmail.com
@@ -25,12 +25,12 @@
 namespace imu {
 	namespace data {
 		struct Vec3 final {
-			constexpr Vec3 operator-(const Vec3& v) const noexcept
+			friend constexpr Vec3 operator-(const Vec3& v1, const Vec3& v2) noexcept
 			{
-				return Vec3{
-					x - v.x,
-					y - v.y,
-					z - v.z,
+				return {
+					v1.x - v2.x,
+					v1.y - v2.y,
+					v1.z - v2.z,
 				};
 			}
 
@@ -92,7 +92,7 @@ namespace imu {
 
 			constexpr data::Vec3 Apply(const data::Vec3& input) noexcept
 			{
-				return data::Vec3{
+				return {
 					_lp_x.Apply(input.x),
 					_lp_y.Apply(input.y),
 					_lp_z.Apply(input.z),
@@ -101,7 +101,7 @@ namespace imu {
 
 			constexpr data::Vec3 Output() const noexcept
 			{
-				return data::Vec3{
+				return {
 					_lp_x.Output(),
 					_lp_y.Output(),
 					_lp_z.Output(),
@@ -166,10 +166,12 @@ namespace imu {
 	}
 
 	namespace allignment {
-		struct Parameters final {
-			static constexpr float deg_to_rad = M_PIf / 180.0f; // conversion factor for degrees to radians
-			static constexpr float g = 1.0f;					// gravitational magnitude in g units (1g)
+		namespace constants {
+			constexpr float deg_to_rad = M_PIf / 180.0f; // conversion factor for degrees to radians
+			constexpr float g = 1.0f;					 // gravitational magnitude in g units (1g)
+		}
 
+		struct Parameters final {
 			// Data pre-processing
 			float fcut_pre_lp = 1.4f;		// low-pass for acc/gyro preprocessing (Hz)
 			float omega_mod_hp_fcut = 0.1f; // HPF for gyro norm to detect stillness (Hz)
@@ -177,25 +179,25 @@ namespace imu {
 			float fcut_gyro_bias = 0.001f;	// LP for gyro bias estimation (very low)
 
 			// Roll/pitch estimation
-			float delta_g_th = 0.01f;					  // tolerance for |a| ~ g to select gravity samples
-			float fcut_angle_lp = 1.0f;					  // LP for roll/pitch angle smoothing
-			float angle_hpf_fcut = 0.01f;				  // Convergence HPF thresholds for angles (paper uses HPF then threshold)
-			float angle_conv_enter = 0.075f * deg_to_rad; // 0.075° enter (hysteresis)
-			float angle_conv_exit = 0.2f * deg_to_rad;	  // 0.2° exit (hysteresis)
+			float delta_g_th = 0.01f;							   // tolerance for |a| ~ g to select gravity samples
+			float fcut_angle_lp = 1.0f;							   // LP for roll/pitch angle smoothing
+			float angle_hpf_fcut = 0.1f;						   // Convergence HPF thresholds for angles (paper uses HPF then threshold)
+			float angle_conv_enter = 0.1f * constants::deg_to_rad; // 0.1° enter (hysteresis)
+			float angle_conv_exit = 0.25f * constants::deg_to_rad; // 0.25° exit (hysteresis)
 
 			// Yaw selection thresholds
-			float omega_z_th = 0.1f;  // small yaw rate threshold for "not turning" (rad/s)
-			float a_xy_th = 0.02f;	  // planar acceleration threshold for selecting straight accel (g)
-			float omega_xy_th = 0.2f; // threshold for roll/pitch dynamics limited
+			float omega_z_th = 0.05f;  // small yaw rate threshold for "not turning" (rad/s)
+			float a_xy_th = 0.1f;	   // planar acceleration threshold for selecting straight accel (g)
+			float omega_xy_th = 0.15f; // threshold for roll/pitch dynamics limited
 
 			// RLS params
 			float rls_lambda = 0.995f; // forgetting factor
 			float rls_p0 = 1e4f;	   // initial covariance
 
 			// Travel direction recognition thresholds
-			float omega_z_dir_th = 0.01f; // threshold for selecting turning instants (rad/s)
-			float a_xy_dir_th = 0.2f;	  // threshold for selecting turning instants with enough planar acceleration (g)
-			float gamma_lp_fcut = 0.2f;
+			float omega_z_dir_th = 0.03f; // threshold for selecting turning instants (rad/s)
+			float a_xy_dir_th = 0.03f;	  // threshold for selecting turning instants with enough planar acceleration (g)
+			float gamma_lp_fcut = 0.01f;
 			float gamma_conv_enter = 0.57f;
 			float gamma_conv_exit = 0.43f;
 		};
@@ -254,7 +256,7 @@ namespace imu {
 				const auto [sin_y, cos_y] = GetSinCos(_mounting_angles.yaw);
 
 				// Compose R = R_z(yaw) * R_y(pitch) * R_x(roll)
-				return data::Mat3{{
+				return {{
 					{cos_y * cos_p, cos_y * sin_p * sin_r - sin_y * cos_r, cos_y * sin_p * cos_r + sin_y * sin_r},
 					{sin_y * cos_p, sin_y * sin_p * sin_r + cos_y * cos_r, sin_y * sin_p * cos_r - cos_y * sin_r},
 					{-sin_p, cos_p * sin_r, cos_p * cos_r},
@@ -352,7 +354,7 @@ namespace imu {
 #endif
 				// Select gravitational-like samples: ||a|| close to g
 				if (const float a_norm = Normalize(acc_filtered.x, acc_filtered.y, acc_filtered.z);
-					a_norm >= (Parameters::g - _parameters.delta_g_th) && a_norm <= (Parameters::g + _parameters.delta_g_th)) {
+					a_norm >= constants::g - _parameters.delta_g_th && a_norm <= constants::g + _parameters.delta_g_th) {
 #ifdef DEBUG_VIFA
 					++rollPitchEntrance;
 #endif
@@ -394,7 +396,7 @@ namespace imu {
 				const float a_x_nom = acc_rp.x;
 				const float a_y_nom = acc_rp.y;
 
-				// Nominal: y = m * x  => ay = m * ax
+				// Nominal: y = m * x => ay = m * ax
 				_rls_nominal.Update(a_x_nom, a_y_nom);
 
 				// Rotated by +90 degrees: (a_x_rot, a_y_rot) = (-ay, ax)
@@ -438,14 +440,14 @@ namespace imu {
 			{
 				// Two candidate yaws: yaw and yaw + pi
 				// rotate the RP planar acceleration into candidate vehicle frames:
-				float a_y_0 = Rotate2D(acc_rp.x, acc_rp.y, -_mounting_angles.yaw);			  // transform by -psi0
-				float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, -(_mounting_angles.yaw + M_PIf)); // transform by -(psi+pi)
+				const float a_y_0 = Rotate2D(acc_rp.x, acc_rp.y, -_mounting_angles.yaw);			// transform by -psi0
+				const float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, -(_mounting_angles.yaw + M_PIf)); // transform by -(psi+pi)
 
 				// Gamma0 = 1 if sign(a_y) == sign(omega_z)
-				int gamma_0 = std::copysign(1.0f, a_y_0) == std::copysign(1.0f, omega_z_rp) ? 1 : 0;
-				int gamma_pi = std::copysign(1.0f, a_y_pi) == std::copysign(1.0f, omega_z_rp) ? 1 : 0;
+				const float gamma_0 = std::copysign(1.0f, a_y_0) == std::copysign(1.0f, omega_z_rp) ? 1.f : 0.f;
+				const float gamma_pi = std::copysign(1.0f, a_y_pi) == std::copysign(1.0f, omega_z_rp) ? 1.f : 0.f;
 
-				return {_lp_gamma_0.Apply(float(gamma_0)), _lp_gamma_pi.Apply(float(gamma_pi))};
+				return {_lp_gamma_0.Apply(gamma_0), _lp_gamma_pi.Apply(gamma_pi)};
 			}
 
 			constexpr void EstimateDirection(float omega_z_rp, float axy_rp_norm, const data::Vec3& acc_rp) noexcept
