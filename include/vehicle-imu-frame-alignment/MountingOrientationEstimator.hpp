@@ -347,7 +347,7 @@ namespace imu {
 				if (std::fabs(_hp_omega_mod.Apply(Normalize(g_lp.x, g_lp.y, g_lp.z))) <= _parameters.omega_th)
 					_lp_gyro_bias.Apply(g_lp);
 
-				if (fabs(a_lp.y) < _parameters.acc_bias_th && fabs(a_lp.z) < _parameters.acc_bias_th && HasLimitedGravitionalChanges(a_lp)) {
+				if (IsGravityInX(a_lp.y, a_lp.z) && HasLimitedGravitionalChanges(a_lp)) {
 					_lp_acc_bias_y.Apply(a_lp.y);
 					_lp_acc_bias_z.Apply(a_lp.z);
 				}
@@ -355,6 +355,11 @@ namespace imu {
 				a_lp.y -= _lp_acc_bias_y.Output();
 				a_lp.z -= _lp_acc_bias_z.Output();
 				return {a_lp, g_lp - _lp_gyro_bias.Output()}; // bias subtract (paper estimates biases using LP when standing)
+			}
+
+			constexpr bool IsGravityInX(float y, float z) const noexcept
+			{
+				return fabs(y) < _parameters.acc_bias_th && fabs(z) < _parameters.acc_bias_th;
 			}
 
 			constexpr bool HasLimitedGravitionalChanges(const data::Vec3& acc) const noexcept
@@ -374,7 +379,9 @@ namespace imu {
 					++rollPitchEntrance;
 #endif
 					// compute roll/pitch as in paper (Eq. 11)
-					const float roll_estimate = std::atan2(acc_filtered.y, std::copysign(Normalize(acc_filtered.x, acc_filtered.z), acc_filtered.z));
+					const float roll_estimate = IsGravityInX(acc_filtered.y, acc_filtered.z)
+													? std::atan2(acc_filtered.y, std::copysign(Normalize(acc_filtered.x, acc_filtered.z), acc_filtered.z))
+													: std::atan2(acc_filtered.y, acc_filtered.z);
 					const auto [sin_roll, cos_roll] = GetSinCos(roll_estimate);
 					const float pitch_estimate = std::atan2(-acc_filtered.x, sin_roll * acc_filtered.y + cos_roll * acc_filtered.z);
 
