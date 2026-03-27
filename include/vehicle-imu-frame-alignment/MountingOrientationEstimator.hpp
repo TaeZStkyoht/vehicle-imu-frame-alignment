@@ -357,9 +357,12 @@ namespace imu {
 				return {a_lp, g_lp - _lp_gyro_bias.Output()}; // bias subtract (paper estimates biases using LP when standing)
 			}
 
-			constexpr bool IsGravityInX(float y, float z) const noexcept
+			constexpr bool IsGravityInX(float y, float z) noexcept
 			{
-				return fabs(y) < _parameters.acc_bias_th && fabs(z) < _parameters.acc_bias_th;
+				bool result = fabs(y) < _parameters.acc_bias_th && fabs(z) < _parameters.acc_bias_th;
+				if (result)
+					++_is_gravity_in_x;
+				return result;
 			}
 
 			constexpr bool HasLimitedGravitionalChanges(const data::Vec3& acc) const noexcept
@@ -495,8 +498,11 @@ namespace imu {
 					else if (gamma_0_f < _parameters.gamma_conv_exit && gamma_pi_f < _parameters.gamma_conv_exit)
 						_latches.gamma = false;
 
-					if (_latches.gamma)
+					if (_latches.gamma) {
+						if (_is_gravity_in_x > 10)
+							_mounting_angles.yaw += M_PIf;
 						_convergence_flags.direction = true;
+					}
 				}
 			}
 
@@ -573,6 +579,8 @@ namespace imu {
 			Latches _latches;
 
 			ConvergenceFlags _convergence_flags;
+
+			unsigned int _is_gravity_in_x{};
 		};
 	}
 }
