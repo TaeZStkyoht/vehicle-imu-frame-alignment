@@ -177,8 +177,6 @@ namespace imu {
 			float omega_mod_hp_fcut = 0.1f; // HPF for gyro norm to detect stillness (Hz)
 			float omega_th = 0.02f;			// threshold for stationary detection (rad/s)
 			float fcut_gyro_bias = 0.001f;	// LP for gyro bias estimation (very low)
-			float fcut_acc_bias = 0.04f;	// LP for acc bias estimation (very low)
-			float acc_bias_th = 0.07f;		// threshold for acc bias estimation
 
 			// Roll/pitch estimation
 			float delta_g_th = 0.01f;							   // tolerance for |a| ~ g to select gravity samples
@@ -218,8 +216,7 @@ namespace imu {
 #endif
 			constexpr explicit MountingOrientationEstimator(float input_period, const Parameters& parameters = {}) noexcept
 				: _parameters(parameters), _lp_acc(_parameters.fcut_pre_lp, input_period), _lp_gyro(_parameters.fcut_pre_lp, input_period),
-				  _lp_gyro_bias(_parameters.fcut_gyro_bias, input_period), _lp_acc_bias_y(_parameters.fcut_acc_bias, input_period),
-				  _lp_acc_bias_z(_parameters.fcut_acc_bias, input_period), _lp_angle_roll(_parameters.fcut_angle_lp, input_period),
+				  _lp_gyro_bias(_parameters.fcut_gyro_bias, input_period), _lp_angle_roll(_parameters.fcut_angle_lp, input_period),
 				  _lp_angle_pitch(_parameters.fcut_angle_lp, input_period), _lp_gamma_0(_parameters.gamma_lp_fcut, input_period),
 				  _lp_gamma_pi(_parameters.gamma_lp_fcut, input_period), _hp_omega_mod(_parameters.omega_mod_hp_fcut, input_period),
 				  _hp_angle_roll(_parameters.angle_hpf_fcut, input_period), _hp_angle_pitch(_parameters.angle_hpf_fcut, input_period),
@@ -347,46 +344,41 @@ namespace imu {
 				if (std::fabs(_hp_omega_mod.Apply(Normalize(g_lp.x, g_lp.y, g_lp.z))) <= _parameters.omega_th)
 					_lp_gyro_bias.Apply(g_lp);
 
-				if (IsGravityInX(a_lp.y, a_lp.z) && HasLimitedGravitionalChanges(a_lp)) {
-					_lp_acc_bias_y.Apply(a_lp.y);
-					_lp_acc_bias_z.Apply(a_lp.z);
-				}
-
-				a_lp.y -= _lp_acc_bias_y.Output();
-				a_lp.z -= _lp_acc_bias_z.Output();
 				return {a_lp, g_lp - _lp_gyro_bias.Output()}; // bias subtract (paper estimates biases using LP when standing)
 			}
 
-			constexpr bool IsGravityInX(float y, float z) noexcept
-			{
-				bool result = fabs(y) < _parameters.acc_bias_th && fabs(z) < _parameters.acc_bias_th;
-				if (result)
-					++_is_gravity_in_x;
-				return result;
-			}
-
-			constexpr bool HasLimitedGravitionalChanges(const data::Vec3& acc) const noexcept
-			{
-				const float a_norm = Normalize(acc.x, acc.y, acc.z);
-				return a_norm >= constants::g - _parameters.delta_g_th && a_norm <= constants::g + _parameters.delta_g_th;
-			}
-
-			constexpr void EstimateRollPitch(const data::Vec3& acc_filtered) noexcept
+			constexpr void EstimateRollPitch(data::Vec3 acc_filtered) noexcept
 			{
 #ifdef DEBUG_VIFA
 				++rollPitchTotalPoint;
 #endif
 				// Select gravitational-like samples: ||a|| close to g
-				if (HasLimitedGravitionalChanges(acc_filtered)) {
+				if (const float a_norm = Normalize(acc_filtered.x, acc_filtered.y, acc_filtered.z);
+					a_norm >= constants::g - _parameters.delta_g_th && a_norm <= constants::g + _parameters.delta_g_th) {
 #ifdef DEBUG_VIFA
 					++rollPitchEntrance;
 #endif
+					const bool is_gravity_in_x = fabs(acc_filtered.x) > fabs(acc_filtered.y) && fabs(acc_filtered.x) > fabs(acc_filtered.z);
+					if (is_gravity_in_x) {
+						std::swap(acc_filtered.x, acc_filtered.z);
+						acc_filtered.z *= -1;
+					}
+
 					// compute roll/pitch as in paper (Eq. 11)
-					const float roll_estimate = IsGravityInX(acc_filtered.y, acc_filtered.z)
-													? std::atan2(acc_filtered.y, std::copysign(Normalize(acc_filtered.x, acc_filtered.z), acc_filtered.z))
-													: std::atan2(acc_filtered.y, acc_filtered.z);
+					float roll_estimate = std::atan2(acc_filtered.y, acc_filtered.z);
 					const auto [sin_roll, cos_roll] = GetSinCos(roll_estimate);
-					const float pitch_estimate = std::atan2(-acc_filtered.x, sin_roll * acc_filtered.y + cos_roll * acc_filtered.z);
+					float pitch_estimate = std::atan2(-acc_filtered.x, sin_roll * acc_filtered.y + cos_roll * acc_filtered.z);
+
+					if (is_gravity_in_x) {
+						if (acc_filtered.z > 0) {
+							roll_estimate -= M_PIf / 2;
+							pitch_estimate += M_PIf / 2;
+						}
+						else {
+							roll_estimate -= M_PIf / 2;
+							pitch_estimate -= M_PIf / 2;
+						}
+					}
 
 					// lowpass the angles
 					const float filtered_roll_estimate = _lp_angle_roll.Apply(roll_estimate);
@@ -498,11 +490,8 @@ namespace imu {
 					else if (gamma_0_f < _parameters.gamma_conv_exit && gamma_pi_f < _parameters.gamma_conv_exit)
 						_latches.gamma = false;
 
-					if (_latches.gamma) {
-						if (_is_gravity_in_x > 10)
-							_mounting_angles.yaw += M_PIf;
+					if (_latches.gamma)
 						_convergence_flags.direction = true;
-					}
 				}
 			}
 
@@ -557,8 +546,6 @@ namespace imu {
 			filter::LowPass3d _lp_acc;
 			filter::LowPass3d _lp_gyro;
 			filter::LowPass3d _lp_gyro_bias;
-			filter::LowPass _lp_acc_bias_y;
-			filter::LowPass _lp_acc_bias_z;
 			filter::LowPass _lp_angle_roll;
 			filter::LowPass _lp_angle_pitch;
 			filter::LowPass _lp_gamma_0;
@@ -579,8 +566,6 @@ namespace imu {
 			Latches _latches;
 
 			ConvergenceFlags _convergence_flags;
-
-			unsigned int _is_gravity_in_x{};
 		};
 	}
 }
