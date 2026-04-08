@@ -411,7 +411,7 @@ namespace imu {
 				// choose best RLS
 				const float J_nom = std::fabs(a_y_nom - m_nom * a_x_nom) / std::sqrt(1.0f + Square(m_nom));
 				const float J_rot = std::fabs(a_y_rot - m_rot * a_x_rot) / std::sqrt(1.0f + Square(m_rot));
-				return J_nom <= J_rot ? std::atan(m_nom) : (std::atan(m_rot) - M_PIf / 2.0f); // yaw estimate
+				return J_nom <= J_rot ? -std::atan(m_nom) : (M_PIf / 2.0f - std::atan(m_rot)); // yaw estimate
 			}
 
 			constexpr void EstimateYaw(float omega_z_rp, float a_xy_rp_norm, const data::Vec3& acc_rp, const data::Vec3& gyro_rp) noexcept
@@ -440,8 +440,8 @@ namespace imu {
 			{
 				// Two candidate yaws: yaw and yaw + pi
 				// rotate the RP planar acceleration into candidate vehicle frames:
-				const float a_y_0 = Rotate2D(acc_rp.x, acc_rp.y, -_mounting_angles.yaw);			// transform by -psi0
-				const float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, -(_mounting_angles.yaw + M_PIf)); // transform by -(psi+pi)
+				const float a_y_0 = Rotate2D(acc_rp.x, acc_rp.y, _mounting_angles.yaw);			 // transform by psi0
+				const float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, _mounting_angles.yaw + M_PIf); // transform by psi+pi
 
 				// Gamma0 = 1 if sign(a_y) == sign(omega_z)
 				const float gamma_0 = std::copysign(1.0f, a_y_0) == std::copysign(1.0f, omega_z_rp) ? 1.f : 0.f;
@@ -505,14 +505,14 @@ namespace imu {
 			}
 
 			// helper: given roll,pitch angles remove roll & pitch from a body vector
-			// apply inverse rotations: first rotate about X by -roll, then about Y by -pitch
+			// apply inverse rotations: first rotate about X by roll, then about Y by pitch
 			static constexpr data::Vec3 RotateRemoveRollPitch(const data::Vec3& v, float roll, float pitch) noexcept
 			{
 				// rotate about X by -roll
-				const auto [sin_roll, cos_roll] = GetSinCos(-roll);
+				const auto [sin_roll, cos_roll] = GetSinCos(roll);
 				const data::Vec3 v1{v.x, cos_roll * v.y - sin_roll * v.z, sin_roll * v.y + cos_roll * v.z};
 				// rotate about Y by -pitch
-				const auto [sin_pitch, cos_pitch] = GetSinCos(-pitch);
+				const auto [sin_pitch, cos_pitch] = GetSinCos(pitch);
 				return {cos_pitch * v1.x + sin_pitch * v1.z, v1.y, -sin_pitch * v1.x + cos_pitch * v1.z};
 			}
 
