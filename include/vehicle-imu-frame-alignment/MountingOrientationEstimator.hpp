@@ -13,10 +13,11 @@
  * Author:  Oğuzhan Türk
  * Contact: stkyoht@hotmail.com
  *
- * Co-Author: Adrian Kersten
+ * Co-author: Adrian Kersten
  *
  * Notes:
  * - Inputs: accelerometer [g], gyroscope [rad/s]
+ * - Outputs: roll-pitch-yaw [rad], rotation matrix (3x3)
  * - Designed for ground vehicles
  */
 
@@ -145,7 +146,6 @@ namespace imu {
 
 			constexpr void Update(float x, float y) noexcept
 			{
-				// avoid degenerate x
 				const float denominator = _lambda + x * _covariance_P * x;
 				const float gain_K = (_covariance_P * x) / denominator;
 				const float estimation_error = y - x * _slope_m;
@@ -165,11 +165,11 @@ namespace imu {
 		};
 	}
 
-	namespace allignment {
+	namespace alignment {
 		namespace constants {
 			constexpr float deg_to_rad = M_PIf / 180.0f; // conversion factor for degrees to radians
 			constexpr float g = 1.0f;					 // gravitational magnitude in g units (1g)
-			constexpr float horiz_eps = 0.1f;			 // ~cos(84°) — inside this cone keep prev roll
+			constexpr float horizontal_epsilon = 0.1f;	 // ~cos(84°) — inside this cone keep prev roll
 		}
 
 		struct Parameters final {
@@ -180,9 +180,7 @@ namespace imu {
 			float fcut_gyro_bias = 0.001f;	// LP for gyro bias estimation (very low)
 
 			// Roll/pitch estimation
-			float delta_g_th = 0.05f;							   // tolerance for |a| ~ g (was 0.01g — widened to admit
-																   // more samples at extreme orientations without accepting
-																   // heavy-acceleration instants)
+			float delta_g_th = 0.05f;							   // tolerance for |a| ~ g to select gravity samples
 			float fcut_angle_lp = 1.0f;							   // LP for roll/pitch angle smoothing
 			float angle_hpf_fcut = 0.1f;						   // Convergence HPF thresholds for angles (paper uses HPF then threshold)
 			float angle_conv_enter = 0.1f * constants::deg_to_rad; // 0.1° enter (hysteresis)
@@ -196,13 +194,15 @@ namespace imu {
 			// RLS params
 			float rls_lambda = 0.995f; // forgetting factor
 			float rls_p0 = 1e4f;	   // initial covariance
+			float rls_j_alpha = 0.05f; // alpha = ~0.05 gives a ~20-sample window at 13 Hz — slow enough to reject individual noisy points, fast enough to
+									   // switch if the box orientation is truly near 45°
 
 			// Travel direction recognition thresholds
-			float omega_z_dir_th = 0.03f; // threshold for selecting turning instants (rad/s)
-			float a_xy_dir_th = 0.03f;	  // threshold for selecting turning instants with enough planar acceleration (g)
-			float gamma_lp_fcut = 0.01f;
-			float gamma_conv_enter = 0.57f;
-			float gamma_conv_exit = 0.43f;
+			float omega_z_dir_th = 0.03f;	// threshold for selecting turning instants (rad/s)
+			float a_xy_dir_th = 0.03f;		// threshold for selecting turning instants with enough planar acceleration (g)
+			float gamma_lp_fcut = 0.01f;	// LP for gamma smoothing
+			float gamma_conv_enter = 0.57f; // 0.57 enter (hysteresis)
+			float gamma_conv_exit = 0.43f;	// 0.43 exit (hysteresis)
 		};
 
 		// ---------- Calibration class implementing the pipeline ----------
@@ -253,8 +253,7 @@ namespace imu {
 
 			// Return rotation matrix M such that a_vehicle = M * a_imu.
 			//
-			// In the paper's passive-DCM convention: a_imu = R_paper * a_vehicle,
-			// so M = R_paper^T (= R_paper^{-1} since R is orthogonal).
+			// In the paper's passive-DCM convention: a_imu = R_paper * a_vehicle, so M = R_paper^T (= R_paper^{-1} since R is orthogonal).
 			// The elements below correspond exactly to Eq.(4)^T.
 			constexpr data::Mat3 GetRotationMatrixOfImuToVehicle() const noexcept
 			{
@@ -335,9 +334,9 @@ namespace imu {
 			};
 
 			struct MountingAngles final {
-				float roll = 0.0f;
-				float pitch = 0.0f;
-				float yaw = 0.0f;
+				float roll{};
+				float pitch{};
+				float yaw{};
 			};
 
 			struct FilteredRollPitchEstimate final {
@@ -345,9 +344,14 @@ namespace imu {
 				float pitch;
 			};
 
+			// Running average of point-to-line errors for RLS selector (Eq.17-18).
+			struct RlsAverage final {
+				float j_nom = 1.0f; // initialised high so neither wins prematurely
+				float j_rot = 1.0f; // initialised high so neither wins prematurely
+			};
+
 			constexpr data::ImuData PreProcessData(const data::Vec3& acc_raw, const data::Vec3& gyro_raw) noexcept
 			{
-				// Preprocess: low-pass the raw signals
 				auto a_lp = _lp_acc.Apply(acc_raw);
 				const auto g_lp = _lp_gyro.Apply(gyro_raw);
 
@@ -365,9 +369,6 @@ namespace imu {
 				++rollPitchTotalPoint;
 #endif
 				// Select gravitational-like samples: ||a|| close to g.
-				// Use a slightly wider gate than the original 0.01g to admit more
-				// samples at extreme orientations where any small vehicle vibration
-				// pushes the norm outside a very tight band.
 				if (const float a_norm = Normalize(acc_filtered.x, acc_filtered.y, acc_filtered.z);
 					a_norm >= constants::g - _parameters.delta_g_th && a_norm <= constants::g + _parameters.delta_g_th) {
 #ifdef DEBUG_VIFA
@@ -393,42 +394,17 @@ namespace imu {
 				}
 			}
 
-			// Compute roll & pitch from a gravity-like unit vector using a
-			// numerically stable atan2 formulation chosen per dominant axis.
-			//
-			// Convention: R = R_z(yaw) * R_y(pitch) * R_x(roll), same as paper Eq.(4).
-			// In the body frame the gravity vector reads:
-			//   gx = -sin(pitch)
-			//   gy =  cos(pitch)*sin(roll)
-			//   gz =  cos(pitch)*cos(roll)
-			//
-			// Z-dominant (normal mounting, |gz| largest):
-			//   roll  = atan2( gy,  gz )          -- paper Eq.(11) top
-			//   pitch = atan2(-gx,  cos(roll)*gz + sin(roll)*gy )
-			//         = atan2(-gx,  gz/cos(roll) ... simplified:
-			//         directly atan2(-gx, sqrt(gy^2+gz^2)) is more robust
-			//
-			// X-dominant (pitched ~±90°, |gx| largest):
-			//   pitch = atan2(-gx, sqrt(gy^2+gz^2))   -- always well-conditioned
-			//   roll  = atan2( gy,  gz )               -- still fine since gz or gy carries signal
-			//   But when gx~±1, gy~gz~0 → roll is indeterminate (gimbal lock):
-			//   use roll = atan2(gy, gz) only when sqrt(gy²+gz²) > epsilon,
-			//   otherwise keep last roll estimate (lock).
-			//
-			// Y-dominant (rolled ~±90°, |gy| largest):
-			//   roll  = atan2( gy,  gz )               -- well-conditioned (gz may be small but gy is large)
-			//   pitch = atan2(-gx, sqrt(gy^2+gz^2))
+			// Compute roll & pitch from a gravity-like unit vector using a numerically stable atan2 formulation chosen per dominant axis.
 			constexpr FilteredRollPitchEstimate CalculateAndFilterRollPitchFromGravity(const data::Vec3& g_unit, float prev_roll) noexcept
 			{
-				const float horiz = Normalize(g_unit.y, g_unit.z);
+				const float y_z_normalized = Normalize(g_unit.y, g_unit.z);
 				return {
-					_lp_angle_roll.Apply(horiz > constants::horiz_eps // roll: only well-conditioned when horiz is not near zero
+					_lp_angle_roll.Apply(y_z_normalized > constants::horizontal_epsilon // roll: only well-conditioned when y_z_normalized is not near zero
 											 ? std::atan2(g_unit.y, g_unit.z)
 											 : prev_roll // Near pitch=±90°: gravity nearly along X, roll is unobservable.
-														 // Keep previous estimate — it will be refined once the vehicle
-														 // moves and pitch changes slightly.
+														 // Keep previous estimate — it will be refined once the vehicle moves and pitch changes slightly.
 										 ),
-					_lp_angle_pitch.Apply(std::atan2(-g_unit.x, horiz)), // pitch is always computable this way — robust for all axes
+					_lp_angle_pitch.Apply(std::atan2(-g_unit.x, y_z_normalized)), // pitch is always computable this way — robust for all axes
 				};
 			}
 
@@ -436,7 +412,6 @@ namespace imu {
 			{
 				// rotate acc and gyro to roll/pitch rotated frame (remove roll+pitch)
 				// Build rotation: R_rp = R_x(roll) * R_y(pitch) (note order to rotate IMU frame to RP frame)
-				// We'll approximate by applying inverse rotations: first rotate by -roll about X, then by -pitch about Y.
 				return {RotateRemoveRollPitch(acc_filtered, _mounting_angles.roll, _mounting_angles.pitch),
 						RotateRemoveRollPitch(gyro_filtered, _mounting_angles.roll, _mounting_angles.pitch)};
 			}
@@ -457,20 +432,18 @@ namespace imu {
 				const float m_nom = _rls_nominal.Output();
 				const float m_rot = _rls_rotated.Output();
 
-				// Point-to-line distance (Eq.17) — use a running low-pass average
-				// instead of the instantaneous sample so that a single noisy point
+				// Point-to-line distance (Eq.17) — use a running low-pass average instead of the instantaneous sample so that a single noisy point
 				// cannot flip the selector.
 				const float j_nom_inst = std::fabs(a_y_nom - m_nom * a_x_nom) / std::sqrt(1.0f + Square(m_nom));
 				const float j_rot_inst = std::fabs(a_y_rot - m_rot * a_x_rot) / std::sqrt(1.0f + Square(m_rot));
 
-				_rls_j_nom_avg = _rls_j_alpha * j_nom_inst + (1.0f - _rls_j_alpha) * _rls_j_nom_avg;
-				_rls_j_rot_avg = _rls_j_alpha * j_rot_inst + (1.0f - _rls_j_alpha) * _rls_j_rot_avg;
+				_rls_average.j_nom = _parameters.rls_j_alpha * j_nom_inst + (1.0f - _parameters.rls_j_alpha) * _rls_average.j_nom;
+				_rls_average.j_rot = _parameters.rls_j_alpha * j_rot_inst + (1.0f - _parameters.rls_j_alpha) * _rls_average.j_rot;
 
-				// Eq.(18-19) — note: because a_box = R_paper * a_veh and the paper uses
-				// passive DCM convention, the RLS slope is m = -tan(yaw), so
-				// yaw = -atan(m).  The rotated branch is consistent: after +90° rotation
-				// of the point cloud, m_rot = cot(yaw), so yaw = pi/2 - atan(m_rot).
-				return _rls_j_nom_avg <= _rls_j_rot_avg ? -std::atan(m_nom) : (M_PIf / 2.0f - std::atan(m_rot));
+				// Eq.(18-19) — note: because a_box = R_paper * a_veh and the paper uses passive DCM convention, the RLS slope is m = -tan(yaw),
+				// so yaw = -atan(m).  The rotated branch is consistent: after +90° rotation of the point cloud, m_rot = cot(yaw),
+				// so yaw = pi/2 -  atan(m_rot).
+				return _rls_average.j_nom <= _rls_average.j_rot ? -std::atan(m_nom) : (M_PIf / 2.0f - std::atan(m_rot));
 			}
 
 			constexpr void EstimateYaw(float omega_z_rp, float a_xy_rp_norm, const data::Vec3& acc_rp, const data::Vec3& gyro_rp) noexcept
@@ -478,7 +451,7 @@ namespace imu {
 #ifdef DEBUG_VIFA
 				++yawTotalPoint;
 #endif
-				// Below conditions: not turning && accelerating && limited roll/pitch dynamics (omega_xy_rp_norm <= omega_xy_th) (Eq.13)
+				// Below conditions: not turning && accelerating && limited roll/pitch dynamics (Eq.13)
 				if (std::fabs(omega_z_rp) < _parameters.omega_z_th && a_xy_rp_norm > _parameters.a_xy_th &&
 					Normalize(gyro_rp.x, gyro_rp.y) <= _parameters.omega_xy_th) {
 #ifdef DEBUG_VIFA
@@ -497,10 +470,8 @@ namespace imu {
 
 			constexpr GammaValues CalculateGamma(float omega_z_rp, const data::Vec3& acc_rp) noexcept
 			{
-				// Transform the RP-frame planar acceleration to the estimated vehicle
-				// frame by rotating by +yaw (inverse of the remaining yaw rotation).
-				// Rotate2D(x, y, θ) returns the y-component of (x,y) rotated by θ,
-				// i.e. sin(θ)*x + cos(θ)*y.
+				// Transform the RP-frame planar acceleration to the estimated vehicle frame by rotating by yaw.
+				// Rotate2D(x, y, θ) returns the y-component of (x,y) rotated by θ, i.e. sin(θ)*x + cos(θ)*y.
 				const float a_y_0 = Rotate2D(acc_rp.x, acc_rp.y, _mounting_angles.yaw);			 // candidate 0
 				const float a_y_pi = Rotate2D(acc_rp.x, acc_rp.y, _mounting_angles.yaw + M_PIf); // candidate 0+π
 
@@ -565,29 +536,14 @@ namespace imu {
 					latch = false;
 			}
 
-			// Remove roll & pitch from a body-frame vector to get the
-			// "roll-pitch-levelled" (RP) frame used by the yaw estimator.
-			//
-			// In the paper (Eq.4): a_box = R * a_veh  where
-			//   R = DCM_yaw * DCM_pitch * DCM_roll  (passive / coordinate-frame convention)
-			//
-			// DCM_phi(φ) in the paper equals Rx(-φ) in the standard active-rotation
-			// convention, because the paper's DCM matrices have the sin term transposed.
-			//
-			// To undo roll and pitch and leave only yaw, we want:
-			//   a_rp = (DCM_pitch * DCM_roll)^{-1} * a_box
-			//        = DCM_roll(-roll) * DCM_pitch(-pitch) * a_box
-			//        = Rx(+roll)_std  * Ry(+pitch)_std  * a_box
-			//
-			// So the correct transformation uses POSITIVE angles in standard notation,
-			// which is what the matrices below compute.
+			// Remove roll & pitch from a body-frame vector to get the "roll-pitch-leveled" (RP) frame used by the yaw estimator.
 			static constexpr data::Vec3 RotateRemoveRollPitch(const data::Vec3& v, float roll, float pitch) noexcept
 			{
-				// Step 1: Rx(+roll)_std  ↔  DCM_phi(-roll)_paper
-				const auto [sin_roll, cos_roll] = GetSinCos(roll); // NOTE: positive roll
+				// rotate about X by roll
+				const auto [sin_roll, cos_roll] = GetSinCos(roll);
 				const data::Vec3 v1{v.x, cos_roll * v.y - sin_roll * v.z, sin_roll * v.y + cos_roll * v.z};
-				// Step 2: Ry(+pitch)_std  ↔  DCM_theta(-pitch)_paper
-				const auto [sin_pitch, cos_pitch] = GetSinCos(pitch); // NOTE: positive pitch
+				// rotate about Y by pitch
+				const auto [sin_pitch, cos_pitch] = GetSinCos(pitch);
 				return {cos_pitch * v1.x + sin_pitch * v1.z, v1.y, -sin_pitch * v1.x + cos_pitch * v1.z};
 			}
 
@@ -617,20 +573,11 @@ namespace imu {
 			filter::ScalarRLS _rls_nominal;
 			filter::ScalarRLS _rls_rotated;
 
-			// Running average of point-to-line errors for RLS selector (Eq.17-18).
-			// Alpha = ~0.05 gives a ~20-sample window at 13 Hz — slow enough to
-			// reject individual noisy points, fast enough to switch if the box
-			// orientation is truly near 45°.
-			static constexpr float _rls_j_alpha = 0.05f;
-			float _rls_j_nom_avg{1.0f}; // initialised high so neither wins prematurely
-			float _rls_j_rot_avg{1.0f};
+			RlsAverage _rls_average;
 
-			// outputs
-			MountingAngles _mounting_angles;
-
-			// latched flags
 			Latches _latches;
 
+			MountingAngles _mounting_angles;
 			ConvergenceFlags _convergence_flags;
 		};
 	}

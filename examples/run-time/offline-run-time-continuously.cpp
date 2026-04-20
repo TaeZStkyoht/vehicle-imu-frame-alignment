@@ -6,7 +6,7 @@
 
 using namespace std;
 
-using namespace imu::allignment;
+using namespace imu::alignment;
 
 struct RollPitchYaw final {
 	float roll;

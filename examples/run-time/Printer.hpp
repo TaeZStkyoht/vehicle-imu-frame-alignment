@@ -7,7 +7,7 @@
 #include <iostream>
 
 namespace Printer {
-	inline void PrintEntranceAndStatus(const imu::allignment::MountingOrientationEstimator& mountingOrientationEstimator)
+	inline void PrintEntranceAndStatus(const imu::alignment::MountingOrientationEstimator& mountingOrientationEstimator)
 	{
 		std::cout << "rollPitchEntrance: " << mountingOrientationEstimator.rollPitchEntrance << '\n'
 				  << "yawEntrance: " << mountingOrientationEstimator.yawEntrance << '\n'
@@ -20,12 +20,12 @@ namespace Printer {
 		std::cout << "RP conv: " << mountingOrientationEstimator.IsRollPitchConverged() << " Yaw conv: " << mountingOrientationEstimator.IsYawConverged()
 				  << " Dir conv: " << mountingOrientationEstimator.IsDirectionConverged() << " Calibrated: " << mountingOrientationEstimator.IsCalibrated()
 				  << '\n';
-		std::cout << "roll (deg): " << mountingOrientationEstimator.Roll() / imu::allignment::constants::deg_to_rad
-				  << " pitch (deg): " << mountingOrientationEstimator.Pitch() / imu::allignment::constants::deg_to_rad
-				  << " yaw (deg): " << mountingOrientationEstimator.Yaw() / imu::allignment::constants::deg_to_rad << '\n';
+		std::cout << "roll (deg): " << mountingOrientationEstimator.Roll() / imu::alignment::constants::deg_to_rad
+				  << " pitch (deg): " << mountingOrientationEstimator.Pitch() / imu::alignment::constants::deg_to_rad
+				  << " yaw (deg): " << mountingOrientationEstimator.Yaw() / imu::alignment::constants::deg_to_rad << '\n';
 	}
 
-	inline void PrintRotationMatrix(const imu::allignment::MountingOrientationEstimator& mountingOrientationEstimator)
+	inline void PrintRotationMatrix(const imu::alignment::MountingOrientationEstimator& mountingOrientationEstimator)
 	{
 		const auto rotationMatrix = mountingOrientationEstimator.GetRotationMatrixOfImuToVehicle();
 		std::cout << "GetRotationMatrixOfImuToVehicle:\n"

@@ -4,7 +4,7 @@
 
 using namespace std;
 
-using namespace imu::allignment;
+using namespace imu::alignment;
 
 int main(int argc, const char* argv[])
 {

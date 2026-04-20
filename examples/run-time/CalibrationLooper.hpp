@@ -6,7 +6,7 @@
 #include <iostream>
 
 namespace CalibrationLooper {
-	inline bool Run(CsvReader& csvReader, imu::allignment::MountingOrientationEstimator& mountingOrientationEstimator)
+	inline bool Run(CsvReader& csvReader, imu::alignment::MountingOrientationEstimator& mountingOrientationEstimator)
 	{
 		size_t iteration{};
 

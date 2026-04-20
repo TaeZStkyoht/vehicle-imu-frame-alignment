@@ -2,12 +2,16 @@
 
 GNSS-free online calibration of IMU mounting angles for ground vehicles, based on a physics-based optimization approach.
 
-This project implements the mounting angle estimation algorithm described in:
+This project is based on the mounting angle estimation algorithm described in:
 
 > **Senofieni, R., Corno, M., Strada, S. C., Savaresi, S. M., & Fredella, S. (2023).**
 > *GNSS-free Online Calibration of Inertial Measurement Units in Road Vehicles*
 > IFAC-PapersOnLine, 56-3 (2023), 109–114
 > DOI: 10.1016/j.ifacol.2023.12.009
+
+The paper has a problem with roll estimation when pitch is around 90°. We improved it by adding these:
+- use different formula on roll estimation
+- use moving average on yaw estimation
 
 The implementation is written in **C++** and is designed for **embedded and automotive-grade IMU systems**.
 
@@ -72,7 +76,7 @@ This rotation can be used to transform raw IMU measurements into the vehicle ref
 - [x] Online convergence tuning
 - [x] Well-structured code
 - [x] Parameter refinement
-- [ ] Extended documentation
+- [x] Extended documentation
 
 ---
 

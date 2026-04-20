@@ -6,7 +6,7 @@ using namespace std;
 
 using namespace imu;
 using namespace data;
-using namespace allignment;
+using namespace alignment;
 
 static constexpr initializer_list<ImuData> imuDataElementsGood = {
 	{{-0.0522461f, 0.0102539f, -1.00635f}, {-0.000532632f, -0.000532632f, .0f}},
